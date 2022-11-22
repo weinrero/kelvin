@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2018 Stefan Wichmann
+// # Copyright (c) 2018 Stefan Wichmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -54,13 +54,10 @@ type WebInterface struct {
 
 // LightSchedule represents the schedule for any given day for the associated lights.
 type LightSchedule struct {
-	Name                    string                  `json:"name"`
-	AssociatedDeviceIDs     []int                   `json:"associatedDeviceIDs"`
-	EnableWhenLightsAppear  bool                    `json:"enableWhenLightsAppear"`
-	DefaultColorTemperature int                     `json:"defaultColorTemperature"`
-	DefaultBrightness       int                     `json:"defaultBrightness"`
-	BeforeSunrise           []TimedColorTemperature `json:"beforeSunrise"`
-	AfterSunset             []TimedColorTemperature `json:"afterSunset"`
+	Name                   string                  `json:"name"`
+	AssociatedDeviceIDs    []int                   `json:"associatedDeviceIDs"`
+	EnableWhenLightsAppear bool                    `json:"enableWhenLightsAppear"`
+	TargetTimes            []TimedColorTemperature `json:"targetTimes"`
 }
 
 // TimedColorTemperature represents a light configuration which will be
@@ -94,28 +91,35 @@ var latestConfigurationVersion = 0
 func (configuration *Configuration) initializeDefaults() {
 	configuration.Version = latestConfigurationVersion
 
-	var bedTime TimedColorTemperature
-	bedTime.Time = "22:00"
-	bedTime.ColorTemperature = 2000
-	bedTime.Brightness = 60
+	var wakeupTime TimedColorTemperature
+	wakeupTime.Time = "04:00"
+	wakeupTime.ColorTemperature = 2000
+	wakeupTime.Brightness = 60
+
+	var workStartTime TimedColorTemperature
+	workStartTime.Time = "08:00"
+	workStartTime.ColorTemperature = 2750
+	workStartTime.Brightness = 100
+
+	var workEndTime TimedColorTemperature
+	workEndTime.Time = "16:00"
+	workEndTime.ColorTemperature = 2750
+	workEndTime.Brightness = 100
 
 	var tvTime TimedColorTemperature
 	tvTime.Time = "20:00"
 	tvTime.ColorTemperature = 2300
 	tvTime.Brightness = 80
 
-	var wakeupTime TimedColorTemperature
-	wakeupTime.Time = "4:00"
-	wakeupTime.ColorTemperature = 2000
-	wakeupTime.Brightness = 60
+	var bedTime TimedColorTemperature
+	bedTime.Time = "22:00"
+	bedTime.ColorTemperature = 2000
+	bedTime.Brightness = 60
 
 	var defaultSchedule LightSchedule
 	defaultSchedule.Name = "default"
 	defaultSchedule.AssociatedDeviceIDs = []int{}
-	defaultSchedule.DefaultColorTemperature = 2750
-	defaultSchedule.DefaultBrightness = 100
-	defaultSchedule.AfterSunset = []TimedColorTemperature{tvTime, bedTime}
-	defaultSchedule.BeforeSunrise = []TimedColorTemperature{wakeupTime}
+	defaultSchedule.TargetTimes = []TimedColorTemperature{wakeupTime, workStartTime, workEndTime, tvTime, bedTime}
 
 	configuration.Schedules = []LightSchedule{defaultSchedule}
 
@@ -241,6 +245,9 @@ func (configuration *Configuration) lightScheduleForDay(light int, date time.Tim
 	// initialize schedule with end of day
 	var schedule Schedule
 	yr, mth, dy := date.Date()
+
+	schedule.sunrise = TimeStamp{CalculateSunrise(date, configuration.Location.Latitude, configuration.Location.Longitude), -1, -1}
+	schedule.sunset = TimeStamp{CalculateSunset(date, configuration.Location.Latitude, configuration.Location.Longitude), -1, -1}
 	schedule.endOfDay = time.Date(yr, mth, dy, 23, 59, 59, 59, date.Location())
 
 	var lightSchedule LightSchedule
@@ -257,29 +264,15 @@ func (configuration *Configuration) lightScheduleForDay(light int, date time.Tim
 		return schedule, fmt.Errorf("Light %d is not associated with any schedule in configuration", light)
 	}
 
-	schedule.sunrise = TimeStamp{CalculateSunrise(date, configuration.Location.Latitude, configuration.Location.Longitude), lightSchedule.DefaultColorTemperature, lightSchedule.DefaultBrightness}
-	schedule.sunset = TimeStamp{CalculateSunset(date, configuration.Location.Latitude, configuration.Location.Longitude), lightSchedule.DefaultColorTemperature, lightSchedule.DefaultBrightness}
-
 	// Before sunrise candidates
-	schedule.beforeSunrise = []TimeStamp{}
-	for _, candidate := range lightSchedule.BeforeSunrise {
+	schedule.targetTimes = []TimeStamp{}
+	for _, candidate := range lightSchedule.TargetTimes {
 		timestamp, err := candidate.AsTimestamp(date)
 		if err != nil {
 			log.Warningf("⚙ Found invalid configuration entry before sunrise: %+v (Error: %v)", candidate, err)
 			continue
 		}
-		schedule.beforeSunrise = append(schedule.beforeSunrise, timestamp)
-	}
-
-	// After sunset candidates
-	schedule.afterSunset = []TimeStamp{}
-	for _, candidate := range lightSchedule.AfterSunset {
-		timestamp, err := candidate.AsTimestamp(date)
-		if err != nil {
-			log.Warningf("⚙ Found invalid configuration entry after sunset: %+v (Error: %v)", candidate, err)
-			continue
-		}
-		schedule.afterSunset = append(schedule.afterSunset, timestamp)
+		schedule.targetTimes = append(schedule.targetTimes, timestamp)
 	}
 
 	schedule.enableWhenLightsAppear = lightSchedule.EnableWhenLightsAppear

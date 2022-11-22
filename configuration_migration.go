@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2018 Stefan Wichmann
+// # Copyright (c) 2018 Stefan Wichmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,9 +21,12 @@
 // SOFTWARE.
 package main
 
-import "time"
-import "fmt"
-import log "github.com/sirupsen/logrus"
+import (
+	"fmt"
+	"time"
+
+	log "github.com/sirupsen/logrus"
+)
 
 func (configuration *Configuration) migrateToLatestVersion() {
 	log.Debugf("⚙ Migrating configuration to latest version...")
@@ -34,42 +37,7 @@ func (configuration *Configuration) migrateToLatestVersion() {
 }
 
 func (configuration *Configuration) migrateVersion0() {
-	log.Debugf("⚙ Migrating configuration version 0 to version 1...")
 
-	// Migrate to new timestamp format
-	for scheduleIndex := range configuration.Schedules {
-		for beforeTimestampIndex := range configuration.Schedules[scheduleIndex].BeforeSunrise {
-			t, err := migrateTimestampFormat(configuration.Schedules[scheduleIndex].BeforeSunrise[beforeTimestampIndex].Time)
-			if err != nil {
-				log.Warningf(err.Error())
-			} else {
-				configuration.Schedules[scheduleIndex].BeforeSunrise[beforeTimestampIndex].Time = t
-			}
-		}
-		for afterTimestampIndex := range configuration.Schedules[scheduleIndex].AfterSunset {
-			t, err := migrateTimestampFormat(configuration.Schedules[scheduleIndex].AfterSunset[afterTimestampIndex].Time)
-			if err != nil {
-				log.Warningf(err.Error())
-			} else {
-				configuration.Schedules[scheduleIndex].AfterSunset[afterTimestampIndex].Time = t
-			}
-		}
-	}
-
-	// Migration: Disable webinterface
-	if configuration.WebInterface.Port == 0 {
-		log.Debugf("⚙ Migrating webinterface settings...")
-		configuration.WebInterface.Enabled = false
-		configuration.WebInterface.Port = 8080
-	}
-
-	// Migration: Automatic enable of kelvin
-	for scheduleIndex := range configuration.Schedules {
-		configuration.Schedules[scheduleIndex].EnableWhenLightsAppear = true
-	}
-
-	configuration.Version = 1
-	log.Debugf("⚙ Migration to version 1 complete")
 }
 
 func migrateTimestampFormat(timestamp string) (string, error) {

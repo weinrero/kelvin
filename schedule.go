@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2019 Stefan Wichmann
+// # Copyright (c) 2019 Stefan Wichmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -33,11 +33,10 @@ import (
 // between this timestamps.
 type Schedule struct {
 	endOfDay               time.Time
-	beforeSunrise          []TimeStamp
 	sunrise                TimeStamp
 	sunset                 TimeStamp
-	afterSunset            []TimeStamp
 	enableWhenLightsAppear bool
+	targetTimes            []TimeStamp
 }
 
 func (schedule *Schedule) currentInterval(timestamp time.Time) (Interval, error) {
@@ -46,48 +45,27 @@ func (schedule *Schedule) currentInterval(timestamp time.Time) (Interval, error)
 		return Interval{TimeStamp{time.Now(), 0, 0}, TimeStamp{time.Now(), 0, 0}}, fmt.Errorf("No current interval as the requested timestamp (%v) lays after the end of the current schedule (%v)", timestamp, schedule.endOfDay)
 	}
 
-	// if we are between todays sunrise and sunset, return daylight interval
-	if timestamp.After(schedule.sunrise.Time) && timestamp.Before(schedule.sunset.Time) {
-		return Interval{schedule.sunrise, schedule.sunset}, nil
-	}
+	yr, mth, dy := timestamp.Date()
+	startOfDay := TimeStamp{time.Date(yr, mth, dy, 0, 0, 0, 0, timestamp.Location()), -1, -1}
+	endOfDay := TimeStamp{time.Date(yr, mth, dy, 23, 59, 59, 0, timestamp.Location()), -1, -1}
+	candidates := append(schedule.targetTimes, startOfDay, endOfDay)
 
-	var before, after TimeStamp
-	// Before sunrise
-	if timestamp.Before(schedule.sunrise.Time) {
-		yr, mth, dy := timestamp.Date()
-		startOfDay := TimeStamp{time.Date(yr, mth, dy, 0, 0, 0, 0, timestamp.Location()), -1, -1}
-		candidates := append(schedule.beforeSunrise, startOfDay, schedule.sunrise)
-
-		before, after = findTargetTimes(timestamp, candidates)
-
-		// fix dummy values
-		if before.ColorTemperature == -1 && before.Brightness == -1 {
-			before.ColorTemperature = after.ColorTemperature
-			before.Brightness = after.Brightness
-		}
-
-		return Interval{before, after}, nil
-	}
-
-	// After sunset
-	if timestamp.After(schedule.sunset.Time) {
-		yr, mth, dy := timestamp.Date()
-		endOfDay := TimeStamp{time.Date(yr, mth, dy, 23, 59, 59, 0, timestamp.Location()), -1, -1}
-		candidates := append(schedule.afterSunset, endOfDay, schedule.sunset)
-
-		before, after = findTargetTimes(timestamp, candidates)
-	}
+	var interval = findTargetTimes(timestamp, candidates)
 
 	// fix dummy values
-	if after.ColorTemperature == -1 && after.Brightness == -1 {
-		after.ColorTemperature = before.ColorTemperature
-		after.Brightness = before.Brightness
+	if interval.Start.ColorTemperature == -1 && interval.Start.Brightness == -1 {
+		interval.Start.ColorTemperature = interval.End.ColorTemperature
+		interval.Start.Brightness = interval.End.Brightness
+	}
+	if interval.End.ColorTemperature == -1 && interval.End.Brightness == -1 {
+		interval.End.ColorTemperature = interval.Start.ColorTemperature
+		interval.End.Brightness = interval.Start.Brightness
 	}
 
-	return Interval{before, after}, nil
+	return interval, nil
 }
 
-func findTargetTimes(timestamp time.Time, candidates []TimeStamp) (TimeStamp, TimeStamp) {
+func findTargetTimes(timestamp time.Time, candidates []TimeStamp) Interval {
 	beforeCandidate := TimeStamp{timestamp.AddDate(0, 0, -2), 0, 0}
 	afterCandidate := TimeStamp{timestamp.AddDate(0, 0, 2), 0, 0}
 
@@ -105,5 +83,5 @@ func findTargetTimes(timestamp time.Time, candidates []TimeStamp) (TimeStamp, Ti
 		log.Fatal("Could not find targetTime in candidates.")
 	}
 
-	return beforeCandidate, afterCandidate
+	return Interval{beforeCandidate, afterCandidate}
 }
